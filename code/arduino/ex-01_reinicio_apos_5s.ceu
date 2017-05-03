@@ -17,16 +17,12 @@ loop do
 
 	emit PIN_13(HIGH);
 	loop do
+		var int on = await PIN_02 until on==LOW;
 		par/or do
-			var int on = await PIN_02 until on==LOW;
-			par/or do
-				var int on = await PIN_02 until on==HIGH;
-			with
-				await 5s;
-				break;
-			end
+			var int on = await PIN_02 until on==HIGH;
 		with
-			await FOREVER;
+			await 5s;
+			break;
 		end
 	end
 end
