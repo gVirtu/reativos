@@ -1,0 +1,36 @@
+#include "arduino/arduino.ceu"
+
+#define PISCA(PIN,DELAY)\
+loop do\
+	emit PIN(LOW);\
+	await DELAY;\
+	emit PIN(HIGH);\
+	await DELAY;\
+end\
+
+input  int PIN_02;
+output int PIN_13, PIN_12, PIN_11;
+ 
+par/or do
+    PISCA(PIN_13, 1s)
+with
+    PISCA(PIN_12, 500ms)
+with
+	PISCA(PIN_11, 250ms)
+with
+	loop do
+		var int on = await PIN_02 until on==LOW;
+		par/or do
+			var int on = await PIN_02 until on==HIGH;
+			await 50ms; // deboucing
+			var int on = await PIN_02 until on==LOW;
+			break;
+		with
+			await 500ms;
+		end
+	end
+end
+emit PIN_13(HIGH);
+emit PIN_12(HIGH);
+emit PIN_11(HIGH);
+await FOREVER;
