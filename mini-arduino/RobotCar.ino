@@ -6,9 +6,9 @@
 #include "lib/AFMotor.cpp"
 #include "lib/Ultrasonic.cpp"
 #include <Servo.h> 
-#define MOTOR_SPD 180
+#define MOTOR_SPD 250
 #define MOTOR_LOFFSET 0
-#define MOTOR_ROFFSET 40
+#define MOTOR_ROFFSET 0
 #define DISTANCIA_MIN 20
 #define SERVO_DELAY 900
 #define TURN_DELAY 684
@@ -125,6 +125,8 @@ void loop() {
       if (millis() - timestampEstado > TURN_DELAY) {
         servo.write(90);
         alteraVelocidade(0);
+        motorL.run(BACKWARD);
+        motorR.run(BACKWARD);
         estado = mudaEstado(E_OLHAFRENTE);
       }
     break;
