@@ -23,8 +23,8 @@ Além disso ele acelerará durante uma trajetória linear sem obstrução, e pos
  - 4 sensores de distância
  - 4 protoboards pequenas (ou 1 grande e 1 pequena caso não seja possível)
  - 1 kit carro
- - 1 Tela LCD/display de 7 segmentos/4 Leds 
  - 1 Buzina
+ - (*opcional*) 1 Tela LCD/display de 7 segmentos/4 Leds 
 
 ### Comportamento
 
