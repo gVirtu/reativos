@@ -93,7 +93,7 @@ void playSong(int* songPitches, int* songNoteDuration, int songLength) {
     int pauseBetweenNotes = (noteDuration * 1.30);
     delay(pauseBetweenNotes);
     // stop the tone playing:
-    noTone(BUZZER);
+    //noTone(BUZZER);
   }
 }
 
