@@ -40,6 +40,8 @@ int isInside(SDL_MouseButtonEvent* bt, int x0, int y0, int x1, int y1)
 		swap(&y0, &y1);
 	}
 
+	printf("Testing if (%d,%d) is between (%d, %d) and (%d, %d)\n", bt->x, bt->y, x0, y0, x1, y1);
+
 	return (bt->x >= x0 &&
 			bt->x <= x1 &&
 			bt->y >= y0 &&
