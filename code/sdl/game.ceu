@@ -2,11 +2,80 @@
 #include "sdl/sdl.ceu"
 
 var&? SDL_Init sdl =
-    spawn SDL_Init("Joguinho", 640,480, SDL_Color(0xFF,0xFF,0xFF,0xFF));
+    spawn SDL_Init("Joguinho", 640,480, SDL_Color(0x00,0x00,0x00,0x00));
 
 watching sdl do
 
-    code/await Cloud (var SDL_Rect r, var float vx) -> FOREVER do
+	native/pre do
+        ##include <time.h>
+		##include <math.h>
+    end
+
+	code/await Player (void) -> FOREVER;
+	code/await Raindrop ( var float x, var float y, var float vx ) -> void;
+	code/await Cloud (var SDL_Rect r, var float vx, var int dropdt) -> FOREVER;
+
+	pool[1] Player player;
+	pool[5] Cloud clouds;
+	pool[] Raindrop raindrops;
+
+	//Helpers
+	code/tight Abs ( var float x ) -> float do
+		if x < 0 then 	escape -x;
+		else			escape x; end
+	end
+
+	code/tight Min ( var float x, var float y ) -> float do
+		if x < y then 	escape x;
+		else			escape y; end
+	end
+
+	code/tight Max ( var float x, var float y ) -> float do
+		if x > y then 	escape x;
+		else			escape y; end
+	end
+
+	//Entities
+	code/tight Clamp ( var float v, var float min, var float max ) -> float do
+		escape call Max(min, call Min(v, max));
+	end
+
+	code/await Raindrop ( var float x, var float y, var float vx ) -> void do
+		var int w = 8;
+		var int h = 16;
+		var int bounces = 0;
+		var int maxbounces = 3;
+		var float vy = 10.0;
+		var float grav = 50.0;
+		var SDL_Rect r = val SDL_Rect(x as int,y as int,w,h);
+		par/or do
+			var int dt;
+            every dt in SDL_DT do
+                x = x + vx*dt/1000;
+                if x < 0 or x > 640 then
+                    break;
+                end
+				y = y + vy*dt/1000;
+                if vy>0 and y > 480 then
+                    vy = -vy*0.85;
+					bounces = bounces + 1;
+					if (bounces >= maxbounces) then
+						break;
+					end
+                end
+				vy = call Min(100.0, vy + grav*dt/1000.0);
+            end
+		with 
+			every SDL_REDRAW do
+				_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x33,0x33,0xFF,0xFF);
+				r.x = (x as int)-(w/2);
+                r.y = (y as int)-(h/2);
+				_SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
+			end	
+		end
+	end
+
+    code/await Cloud (var SDL_Rect r, var float vx, var int dropdt) -> FOREVER do
         var float x = -r.w;
         par do
             var int dt;
@@ -16,6 +85,10 @@ watching sdl do
                     x = -r.w;
                 end
             end
+		with
+			every (dropdt)s do
+				spawn Raindrop(r.x + r.w/2, r.y + r.h/2, vx) in outer.raindrops;
+			end
         with
             every SDL_REDRAW do
                 _SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xDD,0xDD,0xDD,0xFF);
@@ -29,6 +102,11 @@ watching sdl do
         var float x = 640/2 - 20/2;
         var float y = 480-50;
         var float vx = 0;
+		var float maxvx = 150.0;
+		var float dvx = 0.0;
+		var float maxfric = 0.9;
+		var float fric = 0;
+		var float accel = 100.0;
         var float vy = 0;
 
         var SDL_Rect r = val SDL_Rect(0,0, 20,50);
@@ -36,6 +114,7 @@ watching sdl do
         par do
             var int dt;
             every dt in SDL_DT do
+				vx = call Clamp((vx + dvx*dt/1000) * fric, -maxvx, maxvx);
                 x = x + vx*dt/1000;
                 y = y + vy*dt/1000;
             end
@@ -44,44 +123,41 @@ watching sdl do
                 loop do
                     var _SDL_KeyboardEvent&& key;
                     key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_LEFT;
-                    vx = -100;
+                    dvx = -accel; fric = 1;
                     key = await SDL_KEYUP   until key:keysym.sym==_SDLK_LEFT;
-                    vx = 0;
+                    dvx = 0; fric = maxfric;
                 end
             with
                 loop do
                     var _SDL_KeyboardEvent&& key;
                     key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_RIGHT;
-                    vx = 100;
+                    dvx = accel; fric = 1;
                     key = await SDL_KEYUP   until key:keysym.sym==_SDLK_RIGHT;
-                    vx = 0;
+                    dvx = 0; fric = maxfric;
                 end
             end
         with
             every SDL_REDRAW do
-                _SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0x00,0x00,0xFF);
+                _SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0xFF,0x00,0xFF);
                 r.x = x as int;
                 r.y = y as int;
                 _SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
             end
         end
     end
-
-    native/pre do
-        ##include <time.h>
-    end
+	
+	//Main
     _srand(_time(null));
 
-    pool[3] Cloud clouds;
     var int i;
-    loop i in [1 -> 3] do
+    loop i in [1 -> 5] do
         var int w = 50 + _rand()%200;
         var int h = 20 + _rand()%50;
-        var int y = h + _rand()%200;
-        spawn Cloud(SDL_Rect(0,y,w,h), 10+_rand()%50) in clouds;
+        var int y = h + _rand()%100;
+        spawn Cloud(SDL_Rect(0,y,w,h), 10+_rand()%80, 2+_rand()%5) in clouds;
     end
 
-    spawn Player();
+    spawn Player() in player;
 
     await FOREVER;
 end
