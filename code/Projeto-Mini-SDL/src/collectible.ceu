@@ -1,0 +1,54 @@
+var& SDL_Open_Image img_collectible =
+        spawn SDL_Open_Image(&sdl!.ren, "res/faust.png");
+
+code/await Collectible (var int x, var int y) -> (var SDL_Rect collision, event void collided) -> void do
+	var& SDL_Texture tex = &outer.img_collectible.tex;
+    collision = val SDL_Rect(x,y,tex.width,tex.height);
+	var SDL_Rect draw_rect = val SDL_Rect(0,0,tex.width,tex.height);
+	var float angle = 0.0;
+	var float sinT = 0.0;
+
+    par/or do
+		watching collided do
+		    var int dt;
+		    every dt in SDL_DT do
+		        var int v = dt*outer.runSpeed/1000;
+		        x = x - v;
+				angle = _sin(sinT) * 20.0;
+				sinT = sinT + (dt as float)/100.0;
+		        collision.x = collision.x - v;
+		        if (x+tex.width < 0) then
+		            break;
+		        end
+		    end
+		end
+
+		var int i;
+		loop i in [1 -> 8] do
+			var float xspd = 200;
+			var float yspd = 200;
+			var float dir = (_rand()%360);
+            var float speedMod = (outer.runSpeed / outer.minRunSpeed);
+			spawn Particle(		&outer.img_collectible.tex,									//texture
+								x, y,  														//x, y
+								0.66, 0.66,	                                                //scale
+								(_rand()%360) as float, 0.8,					            //angle, alpha
+								_cos(dir*PI/180.0)*xspd*speedMod,                           //vx
+                                _sin(dir*PI/180.0)*yspd*speedMod,          					//vy
+								90.0*speedMod,                                              //v_angle
+                                -2.0*speedMod, -2.0*speedMod, -2.0 * speedMod, 0.0)         //v_wscale, v_hscale, v_alpha, grav
+            in outer.particles;
+        end
+    with
+        every SDL_REDRAW do
+            //draw_rect.w = (tex.width*wscale) as int;
+            //draw_rect.h = (tex.height*hscale) as int;
+			draw_rect.x = (x as int)-(draw_rect.w>>1);
+			draw_rect.y = (y as int)-(draw_rect.h>>1)+((_sin(sinT/2.0)*10) as int);
+			collision.x = (x as int)-(collision.w>>1);
+            collision.y = (y as int)-(collision.h>>1);
+            _SDL_RenderCopyEx(&&outer.sdl!.ren, &&tex.tex, null,
+                                &&draw_rect as _SDL_Rect&&, angle, null, _SDL_FLIP_NONE);
+        end
+    end
+end

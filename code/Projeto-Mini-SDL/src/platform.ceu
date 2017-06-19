@@ -1,0 +1,63 @@
+var& SDL_Open_Image img_block =
+        spawn SDL_Open_Image(&sdl!.ren, "res/block.png");
+
+var int img_block_w = 0;
+var int img_block_h = 0;
+
+_SDL_QueryTexture(&&img_block.tex.tex, null, null, &&img_block_w, &&img_block_h);
+
+code/await Platform (var int x, var int y, var int w, var int side) -> (var SDL_Rect collision, var u64 id) -> void do
+    var& int tex_w = &outer.img_block_w;
+    var& int tex_h = &outer.img_block_h;
+
+    collision = val SDL_Rect(x,y,w*tex_w,tex_h);
+    outer.platformIds = outer.platformIds+1;
+    id = outer.platformIds;
+
+    var int fh;
+    if (side == 1) then
+        fh = (WINDOW_H - (y + tex_h) + tex_h-1)/tex_h;
+    else
+        fh = (y + tex_h-1) / tex_h;
+    end
+
+    par/or do
+        var int dt;
+        every dt in SDL_DT do
+            var int v = dt*outer.runSpeed/1000;
+            x = x - v;
+            collision.x = collision.x - v;
+            if (x+(w*tex_w) < 0) then
+                break;
+            end
+        end
+    with
+        every SDL_REDRAW do
+            var int i;
+            var SDL_Rect block_rect;
+            block_rect = val SDL_Rect(x      , call Min(y+tex_h, y+fh*tex_h*side),
+                                      w*tex_w, fh*tex_h);
+            _SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0x00,0x00,0x00,0xFF);
+            _SDL_RenderFillRect(&&outer.sdl!.ren, (&&block_rect as _SDL_Rect&&));
+
+            loop i in [0 -> w[ do
+                block_rect = val SDL_Rect(x+(i*tex_w),y,tex_w,tex_h);
+                _SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_block.tex.tex, null,
+                                &&block_rect as _SDL_Rect&&);
+            end
+
+            loop i in [1 -> fh] do
+                block_rect = val SDL_Rect(x,y + (i*tex_h*side),tex_w,tex_h);
+                _SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_block.tex.tex, null,
+                                &&block_rect as _SDL_Rect&&);
+
+                block_rect = val SDL_Rect(x + (w*tex_w) - tex_w,y + (i*tex_h*side),tex_w,tex_h);
+                _SDL_RenderCopy(&&outer.sdl!.ren, &&outer.img_block.tex.tex, null,
+                                &&block_rect as _SDL_Rect&&);
+            end
+            
+            //_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xFF,0xDD,0xDD,0xFF);
+            //_SDL_RenderFillRect(&&outer.sdl!.ren, (&&collision as _SDL_Rect&&));
+        end
+    end
+end

@@ -1,0 +1,18 @@
+code/await Cloud (var SDL_Rect r, var float vx) -> FOREVER do
+    var float x = -r.w;
+    par do
+        var int dt;
+        every dt in SDL_DT do
+            x = x + vx*dt/1000;
+            if x > 640 then
+                x = -r.w;
+            end
+        end
+    with
+        every SDL_REDRAW do
+            _SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xDD,0xDD,0xDD,0xFF);
+            r.x = x as int;
+            _SDL_RenderFillRect(&&outer.sdl!.ren, (&&r as _SDL_Rect&&));
+        end
+    end
+end

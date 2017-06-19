@@ -1,0 +1,36 @@
+var& SDL_Open_Image img_dust =
+        spawn SDL_Open_Image(&sdl!.ren, "res/dust.png");
+var& SDL_Open_Image img_dirt =
+        spawn SDL_Open_Image(&sdl!.ren, "res/dirt.png");
+_SDL_SetTextureBlendMode(&&img_dust.tex.tex, _SDL_BLENDMODE_BLEND);
+_SDL_SetTextureBlendMode(&&img_dirt.tex.tex, _SDL_BLENDMODE_BLEND);
+
+code/await Particle (var& SDL_Texture tex, var float x, var float y, var float wscale, var float hscale, var float angle, var float alpha, var float vx, var float vy, var float vr, var float vws, var float vhs, var float va, var float grav) -> void do
+	var SDL_Rect draw_rect = val SDL_Rect(0,0,tex.width,tex.height);
+    par/or do
+        var int dt;
+        every dt in SDL_DT do
+			angle = angle + vr*dt/1000;
+			wscale = wscale + vws*dt/1000;
+			hscale = hscale + vhs*dt/1000;
+			alpha = alpha + va*dt/1000;
+            vy = vy + grav*dt/1000;
+			x = x + vx*dt/1000;
+			y = y + vy*dt/1000;
+            if x < -tex.width or alpha < 0.0 or wscale < 0.0 or hscale < 0.0 then
+                break;
+            end
+        end
+    with
+        every SDL_REDRAW do
+			draw_rect.w = (tex.width*wscale) as int;
+            draw_rect.h = (tex.height*hscale) as int;
+			draw_rect.x = (x as int)-(draw_rect.w>>1);
+			draw_rect.y = (y as int)-(draw_rect.h>>1);
+			_SDL_SetTextureAlphaMod(&&tex.tex, alpha * 255.0);
+            _SDL_RenderCopyEx(&&outer.sdl!.ren, &&tex.tex, null,
+                                &&draw_rect as _SDL_Rect&&, angle, null, _SDL_FLIP_NONE);
+			_SDL_SetTextureAlphaMod(&&tex.tex, 255.0);
+        end
+    end
+end

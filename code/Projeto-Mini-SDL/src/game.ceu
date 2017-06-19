@@ -1,0 +1,261 @@
+#define CEU_SDL_MODE_FRAME (1000/60)
+#include "c.ceu"
+#include "sdl/sdl.ceu"
+#include "utilities.ceu"
+
+#define WINDOW_W 800
+#define WINDOW_H 600
+
+#define GLYPH_W 48
+#define GLYPH_H 64
+
+#define PI 3.1415926535897932
+
+var&? SDL_Init sdl =
+    spawn SDL_Init("Gravity Platformer", WINDOW_W, WINDOW_H, SDL_Color(0xFF,0xFF,0xFF,0xFF));
+
+native _log10;
+native/const 
+    _SDL_FLIP_NONE, 
+    _SDL_FLIP_VERTICAL,
+
+    _SDLK_SPACE,
+    _SDLK_h,
+    _SDLK_u,
+    _SDLK_t,
+    _SDLK_o;
+native/plain  _SDL_RendererFlip;
+native/nohold 
+    _SDL_RenderCopyEx,
+    _SDL_SetTextureBlendMode,
+    _SDL_SetTextureAlphaMod;
+
+watching sdl do
+    var int highScore = 0;
+    var int score = 0;
+    var int platformIds = 0;
+    event bool go_pause;
+
+    var& SDL_Open_Image img_pause =
+        spawn SDL_Open_Image(&sdl!.ren, "res/pause.png");
+
+    var& SDL_Open_Font font = spawn SDL_Open_Font("res/EHSMB.ttf", 48);
+
+    loop do
+
+        var int minimumSize = 10;
+        var int yVariation = 2;
+        var int wVariation = 10;
+        var bool hardToggle = false;
+        var bool autoPlay = false;
+        event void triggerAutoPlay;
+
+        //Gameplay
+        par/or do
+            pause/if go_pause do
+                vector[4] SDL_Open_Image img_bg;
+                
+                var int runSpeed = 300;
+                var int minRunSpeed = runSpeed;
+                score = 1;
+                platformIds = 0;
+                var int scorelength;
+                event void gameOver;
+                event void scoreUpdate;
+		
+		        #include "background.ceu"
+
+                var& SDL_Open_Image bg = spawn SDL_Open_Image(&sdl!.ren, "res/bg/bg_00.png");
+                img_bg = img_bg .. [bg];
+                bg = spawn SDL_Open_Image(&sdl!.ren, "res/bg/bg_01.png");
+                img_bg = img_bg .. [bg];
+                bg = spawn SDL_Open_Image(&sdl!.ren, "res/bg/bg_02.png");
+                img_bg = img_bg .. [bg];
+                bg = spawn SDL_Open_Image(&sdl!.ren, "res/bg/bg_03.png");
+                img_bg = img_bg .. [bg];
+                var& Background bg1 = spawn Background(&img_bg[0].tex, 0.06, 0);
+                var& Background bg2 = spawn Background(&img_bg[1].tex, 0.08, 0);
+                var& Background bg3 = spawn Background(&img_bg[2].tex, 0.10, -42.7);
+                var& Background bg4 = spawn Background(&img_bg[3].tex, 0.12, 0);
+
+                #include "platform.ceu"
+
+                pool[] Platform platforms; 
+
+                #include "particle.ceu" 
+
+                pool[] Particle particles;
+            
+                #include "collectible.ceu"
+
+                pool[] Collectible collectibles;
+
+                #include "player.ceu" 
+
+                code/tight WidthToMS (var int w) -> int do
+                    escape ((1000 * w)/outer.runSpeed); //S/V
+                end
+
+                native/pre do
+                    ##include <time.h>
+                end
+
+                _srand(_time(null));
+
+                var int side = -1;
+
+                var int x = 0;
+                var int y = 10;
+                var int w = 60;
+                
+                scorelength = _log10(score) + 1;
+
+                var& SDL_Open_Image img_scorefont =
+                spawn SDL_Open_Image(&sdl!.ren, "res/font.png");
+                
+                var&? Platform lastPlat;
+                lastPlat = spawn Platform(x,y * img_block_h,w-5,1) in platforms;
+                spawn Platform(x,1 * img_block_h,w-10,-1) in platforms;
+                var& Player player = spawn Player(72, (y-0.5) * img_block_h);
+                var int t = call WidthToMS((w * img_block_w) - WINDOW_W);
+                await (t)ms;
+
+                par/or do
+                    loop do
+                        w = minimumSize + _rand()%wVariation;
+                        x = lastPlat!.collision.x + lastPlat!.collision.w;//WINDOW_W;
+                        var int vShift = 2+_rand()%yVariation;
+                        y = (5 + side*vShift) * img_block_h;
+
+                        if (_rand()%1000 > 950) then
+                            w = w + 20;
+                            spawn Collectible(x + (w>>1) * img_block_w, (5 - side*4) * img_block_h) in collectibles;
+                        end
+
+                        lastPlat = spawn Platform(x,y,w,side) in platforms;
+                        t = call WidthToMS(w * img_block_w);
+                        //t = t + (((20 - w) * (vShift) * runSpeed)/500);
+                        //_printf("w=%d, To wait: %d ms, s/t = %d\n", w, t, (w*img_block_w*1000)/t);
+                        await (t)ms;
+                        side = side * -1;
+                        runSpeed = runSpeed + 10;
+                        player.fallSpeed = player.fallSpeed + 25;
+                        if (runSpeed%120 == 0 and minimumSize > 3) then
+                            minimumSize = minimumSize-1;
+                        end
+                        if (runSpeed%190 == 0 and yVariation < 3) then
+                            yVariation = yVariation+1;
+                        end
+                        if (hardToggle) then
+                            runSpeed = runSpeed + 150;
+                            player.fallSpeed = player.fallSpeed + 375;
+                            hardToggle = false;
+                        end
+                        score = score+1;
+                        scorelength = _log10(score) + 1;
+                        //Cap speeds
+                        runSpeed = call Min(1200, runSpeed);
+                        player.fallSpeed = call Min(3250, player.fallSpeed);
+                    end
+                with
+                    every SDL_REDRAW do
+                        var int i;
+                        var int scoreRem = score;
+                        var int scoreDigit;
+                        var int baseX = ((WINDOW_W>>1) + (((scorelength-1) as float)/2.0 - 0.5) * (GLYPH_W)) as int ;
+                        loop i in [0 -> scorelength[ do
+                            scoreDigit = scoreRem%10;
+                            scoreRem = scoreRem/10;
+                            var SDL_Rect score_rect = val SDL_Rect(baseX - (GLYPH_W*i), (WINDOW_H)-GLYPH_H, GLYPH_W, GLYPH_H);
+                            var SDL_Rect clip_rect = val SDL_Rect(scoreDigit * GLYPH_W, 0, GLYPH_W, GLYPH_H);
+                            _SDL_RenderCopy(&&sdl!.ren, &&img_scorefont.tex.tex, &&clip_rect as _SDL_Rect&&, &&score_rect as _SDL_Rect&&);
+                        end
+                    end
+                with
+                    await gameOver;
+                    if (score > highScore) then
+                        _printf("=================================\n");
+                        _printf("A NEW HIGHSCORE! YOU SCORED %d.\n", score);
+                        _printf("=================================\n\n");
+                        highScore = score;
+                    end  
+                end              
+            end
+        with
+            //Pause game
+            loop do
+                var _SDL_KeyboardEvent&& key = await SDL_KEYDOWN until key:keysym.sym==_SDLK_p;
+                emit go_pause(true);
+                par/or do
+                    var SDL_Rect rct = val SDL_Rect((WINDOW_W - img_pause.tex.width)>>1, (WINDOW_H - img_pause.tex.height)>>1,
+                                                    img_pause.tex.width, img_pause.tex.height);
+                    every SDL_REDRAW do
+                        _SDL_SetRenderDrawColor(&&sdl!.ren, 0x00, 0x00, 0x00, 0xFF);
+                        _SDL_RenderClear(&&sdl!.ren);
+                        _SDL_RenderCopy(&&sdl!.ren, &&img_pause.tex.tex, null,
+                                        &&rct as _SDL_Rect&&);
+                    end
+                with
+                    var _SDL_KeyboardEvent&& key2 = await SDL_KEYDOWN until key2:keysym.sym==_SDLK_p;
+                end
+                emit go_pause(false);
+            end
+        with 
+            var _SDL_KeyboardEvent&& key;
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_h);
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_a);
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_r);
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_d);
+            wVariation = 1;
+            minimumSize = 3;
+            hardToggle = true;
+            _printf("Hard mode on\n");
+            await FOREVER;
+        with 
+            var _SDL_KeyboardEvent&& key;
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_a);
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_u);
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_t);
+            key = await SDL_KEYDOWN until (key:keysym.sym==_SDLK_o);
+            autoPlay = true;
+            emit triggerAutoPlay;
+            await FOREVER;
+        end
+
+        //
+        par/or do
+            //not very pretty
+            //2d vector support would be handy
+            vector[10] byte str1; _sprintf(&&str1[0], "YOU LOST");
+            vector[20] byte str2; _sprintf(&&str2[0], "SCORE: %d", score);
+            vector[30] byte str3; _sprintf(&&str3[0], "PERSONAL BEST: %d", highScore);
+            vector[25] byte str4; _sprintf(&&str4[0], "DON'T DRINK AND DRIVE");
+            
+            var& SDL_New_Text txt1 =
+                    spawn SDL_New_Text(&sdl!.ren, &font.font, &&str1[0], SDL_Color(0xFF,0xFF,0xFF,0xFF));
+            var& SDL_New_Text txt2 =
+                    spawn SDL_New_Text(&sdl!.ren, &font.font, &&str2[0], SDL_Color(0xFF,0xFF,0xFF,0xFF));
+            var& SDL_New_Text txt3 =
+                    spawn SDL_New_Text(&sdl!.ren, &font.font, &&str3[0], SDL_Color(0xFF,0xFF,0xFF,0xFF));
+            var& SDL_New_Text txt4 =
+                    spawn SDL_New_Text(&sdl!.ren, &font.font, &&str4[0], SDL_Color(0xFF,0xFF,0xFF,0xFF));
+
+            var SDL_Rect rect1 = val SDL_Rect((WINDOW_W - txt1.tex.width)>>1, (WINDOW_H - txt1.tex.height)>>3, txt1.tex.width, txt1.tex.height);
+            var SDL_Rect rect2 = val SDL_Rect((WINDOW_W - txt2.tex.width)>>1, 3*((WINDOW_H - txt2.tex.height)>>3), txt2.tex.width, txt2.tex.height);
+            var SDL_Rect rect3 = val SDL_Rect((WINDOW_W - txt3.tex.width)>>1, 5*((WINDOW_H - txt3.tex.height)>>3), txt3.tex.width, txt3.tex.height);
+            var SDL_Rect rect4 = val SDL_Rect((WINDOW_W - txt4.tex.width)>>1, 7*((WINDOW_H - txt4.tex.height)>>3), txt4.tex.width, txt4.tex.height);
+            every SDL_REDRAW do
+                _SDL_SetRenderDrawColor(&&sdl!.ren, 0x11, 0x11, 0x11, 0xFF);
+                _SDL_RenderClear(&&sdl!.ren);
+                _SDL_RenderCopy(&&sdl!.ren, &&txt1.tex.tex, null, &&rect1 as _SDL_Rect&&);
+                _SDL_RenderCopy(&&sdl!.ren, &&txt2.tex.tex, null, &&rect2 as _SDL_Rect&&);
+                _SDL_RenderCopy(&&sdl!.ren, &&txt3.tex.tex, null, &&rect3 as _SDL_Rect&&);
+                _SDL_RenderCopy(&&sdl!.ren, &&txt4.tex.tex, null, &&rect4 as _SDL_Rect&&);
+            end
+        with
+            var _SDL_KeyboardEvent&& key = await SDL_KEYDOWN;
+        end
+    end
+end
+
+escape 0;

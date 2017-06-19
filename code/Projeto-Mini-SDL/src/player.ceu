@@ -1,0 +1,260 @@
+#ifndef _PLAYER
+#define _PLAYER
+
+#define HITBOX_W 32
+#define HITBOX_H 40
+#define FLOOR_THRESHOLD 8
+#define PLAYER_FRAME_COUNT 3
+
+var& SDL_Open_Image img_player =
+        spawn SDL_Open_Image(&sdl!.ren, "res/player.png");
+
+var int img_player_w = 0;
+var int img_player_h = 0;
+
+_SDL_QueryTexture(&&img_player.tex.tex, null, null, &&img_player_w, &&img_player_h);
+img_player_w = img_player_w / PLAYER_FRAME_COUNT;
+
+code/await Player (var float x, var float y) -> (var int fallSpeed) -> FOREVER do
+    fallSpeed = 750;
+    var float vx = 0;
+    var float vy = fallSpeed;
+    var float grav = 700;
+    var float angle = 0.0;
+    var float wscale = 1.0;
+    var float hscale = 1.0;
+    var bool falling = true;
+    var int grav_sign = 1;
+    var&? Platform myFloor;
+
+    var& int tex_w = &outer.img_player_w;
+    var& int tex_h = &outer.img_player_h;
+    
+    var int animation_frame = 0;
+    vector[] int player_animation = [0, 1, 2, 1];
+
+    var SDL_Rect draw_rect = val SDL_Rect(0,0,tex_w,tex_h);
+    var SDL_Rect collision = val SDL_Rect(0,0,HITBOX_W,HITBOX_H);
+    var _SDL_RendererFlip flip = _SDL_FLIP_NONE;
+
+	event void dead;
+	event void doFlip;
+
+	code/tight SpawnBoom (void) -> bool do
+		var int i;
+		loop i in [1 -> 8] do
+			var float xspd = 180;
+			var float yspd = 40;
+			var float dir = (_rand()%180);
+            var float speedMod = (outer.runSpeed / outer.minRunSpeed);
+			spawn Particle(		&outer.img_dust.tex,									//texture
+								outer.x, outer.y + ((outer.tex_h>>2) + 4)*outer.grav_sign,  //x, y
+								0.4, 0.4,	                                                //scale
+								(_rand()%360) as float, 1.0,					            //angle, alpha
+								_cos(dir*PI/180.0)*xspd*speedMod,                           //vx
+                                -outer.grav_sign*_sin(dir*PI/180.0)*yspd*speedMod,          //vy
+								50.0*speedMod,                                              //v_angle
+                                5.0*speedMod, 5.0*speedMod, -2.0 * speedMod, 0.0)           //v_wscale, v_hscale, v_alpha, grav
+            in outer.particles;
+        end
+		escape true;
+	end
+
+	code/tight Flip(var int mult, var _SDL_RendererFlip rflip) -> bool do
+		call SpawnBoom();	
+		outer.flip = rflip; outer.grav_sign = mult;
+		outer.vy = (mult as float)*outer.fallSpeed; outer.wscale = 0.6; outer.hscale = 1.1;
+		escape true;
+	end
+
+	var int dt;
+    par do
+		par/or do			
+		    every dt in SDL_DT do
+		        y = y + vy*dt/1000;
+			end
+		with
+			loop do
+				//Falling
+				every dt in SDL_DT do
+					//Platform collision check
+		            var&? Platform plat;
+		            var bool collided = false;
+		            loop plat in outer.platforms do
+		                loop do
+		                    if (call Intersects(&plat!.collision, &collision)) then
+		                        collided = true;                        
+		                        var int diff = call Sign(vy as int);
+		                        //_printf("Collided at y=%d! Adjusting by %d\n", collision.y, -diff);
+		                        collision.y = collision.y - diff;
+		                    else
+		                        break;
+		                    end
+		                end
+		                if (collided) then
+		                    myFloor = &plat;
+		                    break;
+		                end
+		            end
+		            if (collided) then
+		                y = collision.y + (collision.h>>1);
+		                vy = 0;
+		                hscale = 0.6;
+		                wscale = 1.4;
+						var int i;
+						loop i in [1 -> 12] do
+							var float xspd = 160;
+							var float yspd = 300;
+							var float dir = 30 + (_rand()%120);
+							var float speedMod = (outer.runSpeed / outer.minRunSpeed);
+							spawn Particle(		&outer.img_dirt.tex,										//texture
+												x - 10 + (_rand()%21), 										//x
+												y + ((tex_h>>1) - 1)*grav_sign,  							//y
+												1.0, 1.0,	                                                //scale
+												(_rand()%360) as float, 1.0,					            //angle, alpha
+												-outer.runSpeed+_cos(dir*PI/180.0)*xspd*speedMod,           //vx
+												-grav_sign*_sin(dir*PI/180.0)*yspd*speedMod,          		//vy
+												60.0*speedMod,                                              //v_angle
+												3.0 * speedMod, 3.0 * speedMod, 							//v_wscale, v_hscale,
+												-2.0 * speedMod, 500.0*grav_sign)    						//v_alpha, grav
+							in outer.particles;
+						end
+		                break; //not falling anymore
+		            end
+
+					//Collectible collision check
+		            var&? Collectible collectible;
+		            loop collectible in outer.collectibles do
+						if (call Intersects(&collectible!.collision, &collision)) then
+							emit collectible!.collided;
+							vy = -vy;
+							grav_sign = -grav_sign;
+							if (flip == _SDL_FLIP_NONE) then
+								flip = _SDL_FLIP_VERTICAL;
+							else
+								flip = _SDL_FLIP_NONE;
+							end
+							outer.score = outer.score + 5;
+							outer.scorelength = _log10(outer.score) + 1;
+						end
+					end
+				end
+
+				//Not Falling
+				par/or do
+					every dt in SDL_DT do
+						if hscale < 1.0 then hscale = hscale + 0.1; end
+				        if wscale > 1.0 then wscale = wscale - 0.1; end
+				        var SDL_Rect collision_shifted = collision;
+						collision_shifted.x = collision_shifted.x - FLOOR_THRESHOLD*2;
+						collision_shifted.w = collision_shifted.w + FLOOR_THRESHOLD*2;
+				        collision_shifted.y = collision_shifted.y + grav_sign*FLOOR_THRESHOLD;
+				        if ((not myFloor?) or (not call Intersects(&myFloor!.collision, &collision_shifted))) then
+							if (outer.autoPlay) then
+								if (grav_sign > 0) then
+									call Flip(-1, _SDL_FLIP_VERTICAL);
+									emit doFlip;
+								else
+									call Flip(1, _SDL_FLIP_NONE);
+									emit doFlip;
+								end
+							else
+								hscale = 1.0; wscale = 1.0;
+								emit dead;
+							end
+				        end
+					end
+				with
+					every (200 + _rand()%200)ms do
+						spawn Particle(	&outer.img_dust.tex,						    //texture
+										x + 8, y + ((tex_h>>2) + 4)*grav_sign, 			//x, y
+										0.4, 0.4,	//((40.0 + (_rand()%20)) as float)	//scale
+										(_rand()%360) as float, 1.0,					//angle, alpha
+										-outer.runSpeed, -20.1*grav_sign,				//vx, vy
+										50.0, 2.0, 2.0, -2.0, 0.0) in outer.particles;  //v_angle, v_wscale, v_hscale, v_alpha, grav
+					end
+				with
+					loop do
+						var _SDL_KeyboardEvent&& key;
+						key = await SDL_KEYDOWN until ((key:keysym.sym==_SDLK_UP or key:keysym.sym==_SDLK_SPACE) and grav_sign == 1);
+						//call SpawnBoom();						
+						call Flip(-1, _SDL_FLIP_VERTICAL);
+						emit doFlip;
+					end
+				with
+					loop do
+						var _SDL_KeyboardEvent&& key;
+						key = await SDL_KEYDOWN until ((key:keysym.sym==_SDLK_DOWN or key:keysym.sym==_SDLK_SPACE) and grav_sign == -1);
+						//call SpawnBoom();						
+						call Flip(1, _SDL_FLIP_NONE);
+						emit doFlip;
+					end
+				with
+					if (not outer.autoPlay) then
+						await outer.triggerAutoPlay;
+					end
+					
+					every dt in SDL_DT do
+						var&? Platform plat;
+						var SDL_Rect collision_shifted = collision;
+						collision_shifted.x = collision.x - (FLOOR_THRESHOLD * FLOOR_THRESHOLD);
+						collision_shifted.y = 0;
+						collision_shifted.h = WINDOW_H;
+						loop plat in outer.platforms do
+							if ((not myFloor?) or (plat!.id > myFloor!.id)) then
+								collision_shifted.w = collision.w + (((call Abs(plat!.collision.y - collision.y) * outer.runSpeed * 1.1)/fallSpeed) as int);
+								if (call Intersects(&plat!.collision, &collision_shifted)) then
+									if (grav_sign > 0) then
+										call Flip(-1, _SDL_FLIP_VERTICAL);
+										emit doFlip;
+									else
+										call Flip(1, _SDL_FLIP_NONE);
+										emit doFlip;
+									end
+								end
+							end
+						end
+					end
+				with
+					await doFlip;
+				end
+			end
+		with
+			await dead;
+		end
+
+        //Dead
+        every dt in SDL_DT do
+            y = y + vy*dt/1000;
+            vy = vy + grav*grav_sign*dt/1000;
+            angle = angle + 8.0 * grav_sign;
+        end
+	with
+		every dt in SDL_DT do
+			if (y < -tex_h or y > WINDOW_H+tex_h) then
+				emit outer.gameOver;
+			end
+		end
+    with 
+        every 160ms do
+            animation_frame = (animation_frame + 1)%($player_animation as int);
+        end
+    with
+        every SDL_REDRAW do
+            var SDL_Rect clip_rect = val SDL_Rect(player_animation[animation_frame] * tex_w, 0, tex_w, tex_h);
+            draw_rect.w = (tex_w*wscale) as int;
+            draw_rect.h = (tex_h*hscale) as int;
+            draw_rect.x = (x as int)-(draw_rect.w>>1);
+            draw_rect.y = (y as int)-(draw_rect.h>>1)+((grav_sign * (1-hscale) * (draw_rect.h>>1)) as int); //last term added so we stick to the ground when ´squished´
+            collision.x = (x as int)-(collision.w>>1);
+            collision.y = (y as int)-(collision.h>>1);
+            
+            //_SDL_SetRenderDrawColor(&&outer.sdl!.ren, 0xDD,0xDD,0xDD,0xFF);
+            //_SDL_RenderFillRect(&&outer.sdl!.ren, (&&collision as _SDL_Rect&&));
+            _SDL_RenderCopyEx(&&outer.sdl!.ren, &&outer.img_player.tex.tex, &&clip_rect as _SDL_Rect&&,
+                                &&draw_rect as _SDL_Rect&&, angle, null, flip);
+        end
+    end
+end
+
+#endif

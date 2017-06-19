@@ -1,0 +1,26 @@
+code/await Background (var& SDL_Texture tex, var float depth, var float y) -> FOREVER do
+	var SDL_Rect draw_rect = val SDL_Rect(0,0,tex.width,tex.height);
+	var float x = 0;
+
+    par/or do
+	    var int dt;
+	    every dt in SDL_DT do
+	        var float v = depth*outer.runSpeed*dt/1000;
+	        x = x - v;
+	        if (x+tex.width <= 0) then
+	            x = x + tex.width;
+	        end
+	    end
+    with
+        every SDL_REDRAW do
+			draw_rect.x = (x as int);
+			draw_rect.y = (y as int);
+			//Draw 2 copies side by side
+            _SDL_RenderCopy(&&outer.sdl!.ren, &&tex.tex, null,
+                                &&draw_rect as _SDL_Rect&&);
+			draw_rect.x = draw_rect.x + draw_rect.w;
+            _SDL_RenderCopy(&&outer.sdl!.ren, &&tex.tex, null,
+                                &&draw_rect as _SDL_Rect&&);
+        end
+    end
+end
