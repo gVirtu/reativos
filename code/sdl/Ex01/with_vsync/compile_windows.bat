@@ -1,0 +1,1 @@
+g++ sdl2.cpp -o sdl2.exe -lmingw32 -lSDL2main -lSDL2 -mwindows
